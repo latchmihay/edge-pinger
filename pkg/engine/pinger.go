@@ -2,7 +2,6 @@ package engine
 
 import (
 	"log"
-	"strings"
 	"time"
 
 	"github.com/latchmihay/edge-pinger/pkg/prom"
@@ -15,40 +14,39 @@ type PingableAddress struct {
 	Count    int
 	Timeout  time.Duration
 	debug    bool
-	addrProm string
 	gauges   map[string]*prometheus.GaugeVec
 	counters map[string]*prometheus.CounterVec
-	health   prometheus.GaugeVec
 }
 
-func NewPing(addr string, count int, timeout time.Duration, debug bool) (*PingableAddress, error) {
-	// sanitize metric name
-	addrProm := strings.Replace(addr, ".", "_", -1)
+var (
+	addrProm = "edge_pinger"
 	// label for the collectors
-	labels := []string{"ip", "hostname", "error", "error_desc"}
+	labels = []string{"ip", "hostname", "error", "error_desc"}
 	// create collectors
-	avgRtt := prom.AddGauge(addrProm, "rtt_avg", "average round trip time", labels)
-	minRtt := prom.AddGauge(addrProm, "rtt_min", "min round trip time", labels)
-	maxRtt := prom.AddGauge(addrProm, "rtt_max", "max round trip time", labels)
-	stdDevRtt := prom.AddGauge(addrProm, "rtt_stddev", "max round trip time", labels)
-	packetLoss := prom.AddGauge(addrProm, "packet_loss", "percentage of packets lost", labels)
-	packetSent := prom.AddCounter(addrProm, "packets_transmitted", "total number of packets sent", labels)
-	packetRecv := prom.AddCounter(addrProm, "packet_received", "total number of packets received", labels)
-	numberPings := prom.AddCounter(addrProm, "total_packets", "total number of packets sent", labels)
-	healthy := prom.AddGauge(addrProm, "healthy", "Failed to resolve and to ping", labels)
+	avgRtt      = prom.AddGauge(addrProm, "rtt_avg", "average round trip time", labels)
+	minRtt      = prom.AddGauge(addrProm, "rtt_min", "min round trip time", labels)
+	maxRtt      = prom.AddGauge(addrProm, "rtt_max", "max round trip time", labels)
+	stdDevRtt   = prom.AddGauge(addrProm, "rtt_stddev", "max round trip time", labels)
+	packetLoss  = prom.AddGauge(addrProm, "packet_loss", "percentage of packets lost", labels)
+	packetSent  = prom.AddCounter(addrProm, "packets_transmitted", "total number of packets sent", labels)
+	packetRecv  = prom.AddCounter(addrProm, "packet_received", "total number of packets received", labels)
+	numberPings = prom.AddCounter(addrProm, "total_packets", "total number of packets sent", labels)
+	healthy     = prom.AddGauge(addrProm, "healthy", "Failed to resolve and to ping", labels)
+)
 
+func Init() {
 	prometheus.MustRegister(avgRtt, minRtt, maxRtt, stdDevRtt, packetLoss, packetSent, packetRecv, numberPings, healthy)
+}
 
+func NewPing(addr string, count int, timeout time.Duration, debug bool) *PingableAddress {
 	return &PingableAddress{
 		Hostname: addr,
 		Count:    count,
 		Timeout:  timeout,
 		debug:    debug,
-		addrProm: addrProm,
-		gauges:   map[string]*prometheus.GaugeVec{"avgRtt": avgRtt, "minRtt": minRtt, "maxRtt": maxRtt, "stdDevRtt": stdDevRtt, "packetLoss": packetLoss},
+		gauges:   map[string]*prometheus.GaugeVec{"avgRtt": avgRtt, "minRtt": minRtt, "maxRtt": maxRtt, "stdDevRtt": stdDevRtt, "packetLoss": packetLoss, "health": healthy},
 		counters: map[string]*prometheus.CounterVec{"packetSent": packetSent, "packetRecv": packetRecv, "numberPings": numberPings},
-		health:   *healthy,
-	}, nil
+	}
 }
 
 func (pa *PingableAddress) Run() {
@@ -57,12 +55,10 @@ func (pa *PingableAddress) Run() {
 	}
 	pinger, err := ping.NewPinger(pa.Hostname)
 	if err != nil {
-		pa.health.Reset()
-		pa.health.WithLabelValues(err.Error(), pa.Hostname, "true", err.Error()).Set(1)
+		pa.gauges["health"].WithLabelValues(err.Error(), pa.Hostname, "true", err.Error()).Set(1)
 		return
 	}
-	pa.health.Reset()
-	pa.health.WithLabelValues(pinger.IPAddr().String(), pa.Hostname, "false", "").Set(0)
+	pa.gauges["health"].WithLabelValues(pinger.IPAddr().String(), pa.Hostname, "false", "").Set(0)
 
 	pinger.Count = pa.Count
 	pinger.Timeout = pa.Timeout
@@ -79,7 +75,6 @@ func (pa *PingableAddress) Run() {
 		if stats.PacketLoss >= 10 {
 			pa.gauges["packetLoss"].WithLabelValues(pinger.IPAddr().String(), pa.Hostname, "true", "More than 10% packet loss").Set(stats.PacketLoss)
 		}
-		pa.gauges["packetLoss"].Reset() // resetting the metric in case a previous run went into the error logic above
 		pa.gauges["packetLoss"].WithLabelValues(pinger.IPAddr().String(), pa.Hostname, "false", "").Set(stats.PacketLoss)
 
 		pa.gauges["avgRtt"].WithLabelValues(pinger.IPAddr().String(), pa.Hostname, "false", "").Set(stats.AvgRtt.Seconds() * 1e3)

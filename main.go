@@ -63,11 +63,9 @@ func main() {
 		log.Fatal(err)
 	}
 
+	engine.Init()
 	for _, addr := range edgePingerConfig.Addresses {
-		client, err := engine.NewPing(addr, edgePingerConfig.Count, timeout, *debug)
-		if err != nil {
-			log.Fatal(err)
-		}
+		client := engine.NewPing(addr, edgePingerConfig.Count, timeout, *debug)
 		log.Printf("Initiating a ping loop for %v Count=%v Timeout=%v Interval=%v", addr, edgePingerConfig.Count, timeout, interval)
 		go func() {
 			for true {
