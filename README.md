@@ -31,3 +31,8 @@ $ go run main.go --config example/edge-pinger-configuration.hcl
 2019/08/22 17:39:27 Initiating a ping loop for github.com Count=5 Timeout=10s Interval=1m0s
 2019/08/22 17:39:27 Listening on :8080
 ```
+
+### How to run in container:
+```console
+docker run --sysctl net.ipv4.ping_group_range="0 2147483647" -p 8080:8080 -v $(pwd)/example/edge-pinger-configuration.hcl:/config.hcl quay.io/latchmihay/edge-pinger:latest --config /config.hcl --debug
+```
