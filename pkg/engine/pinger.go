@@ -21,7 +21,7 @@ type PingableAddress struct {
 var (
 	addrProm = "edge_pinger"
 	// label for the collectors
-	labels = []string{"ip", "hostname", "error", "error_desc"}
+	labels = []string{"ip", "hostname"}
 	// create collectors
 	avgRtt      = prom.AddGauge(addrProm, "rtt_avg", "average round trip time", labels)
 	minRtt      = prom.AddGauge(addrProm, "rtt_min", "min round trip time", labels)
@@ -55,15 +55,15 @@ func (pa *PingableAddress) Run() {
 	}
 	pinger, err := ping.NewPinger(pa.Hostname)
 	if err != nil {
-		pa.gauges["health"].WithLabelValues(err.Error(), pa.Hostname, "true", err.Error()).Set(1)
+		pa.gauges["health"].WithLabelValues(pinger.IPAddr().String(), pa.Hostname).Set(1)
 		return
 	}
-	pa.gauges["health"].WithLabelValues(pinger.IPAddr().String(), pa.Hostname, "false", "").Set(0)
+	pa.gauges["health"].WithLabelValues(pinger.IPAddr().String(), pa.Hostname).Set(0)
 
 	pinger.Count = pa.Count
 	pinger.Timeout = pa.Timeout
 	pinger.OnRecv = func(pkt *ping.Packet) {
-		pa.counters["numberPings"].WithLabelValues(pinger.IPAddr().String(), pa.Hostname, "false", "").Add(1)
+		pa.counters["numberPings"].WithLabelValues(pinger.IPAddr().String(), pa.Hostname).Add(1)
 		if pa.debug {
 			log.Printf("%d bytes from %s: icmp_seq=%d time=%v\n",
 				pkt.Nbytes, pkt.IPAddr, pkt.Seq, pkt.Rtt)
@@ -72,18 +72,15 @@ func (pa *PingableAddress) Run() {
 	}
 
 	pinger.OnFinish = func(stats *ping.Statistics) {
-		if stats.PacketLoss >= 10 {
-			pa.gauges["packetLoss"].WithLabelValues(pinger.IPAddr().String(), pa.Hostname, "true", "More than 10% packet loss").Set(stats.PacketLoss)
-		}
-		pa.gauges["packetLoss"].WithLabelValues(pinger.IPAddr().String(), pa.Hostname, "false", "").Set(stats.PacketLoss)
+		pa.gauges["packetLoss"].WithLabelValues(pinger.IPAddr().String(), pa.Hostname).Set(stats.PacketLoss)
 
-		pa.gauges["avgRtt"].WithLabelValues(pinger.IPAddr().String(), pa.Hostname, "false", "").Set(stats.AvgRtt.Seconds() * 1e3)
-		pa.gauges["minRtt"].WithLabelValues(pinger.IPAddr().String(), pa.Hostname, "false", "").Set(stats.MinRtt.Seconds() * 1e3)
-		pa.gauges["maxRtt"].WithLabelValues(pinger.IPAddr().String(), pa.Hostname, "false", "").Set(stats.MaxRtt.Seconds() * 1e3)
-		pa.gauges["stdDevRtt"].WithLabelValues(pinger.IPAddr().String(), pa.Hostname, "false", "").Set(stats.StdDevRtt.Seconds() * 1e3)
+		pa.gauges["avgRtt"].WithLabelValues(pinger.IPAddr().String(), pa.Hostname).Set(stats.AvgRtt.Seconds() * 1e3)
+		pa.gauges["minRtt"].WithLabelValues(pinger.IPAddr().String(), pa.Hostname).Set(stats.MinRtt.Seconds() * 1e3)
+		pa.gauges["maxRtt"].WithLabelValues(pinger.IPAddr().String(), pa.Hostname).Set(stats.MaxRtt.Seconds() * 1e3)
+		pa.gauges["stdDevRtt"].WithLabelValues(pinger.IPAddr().String(), pa.Hostname).Set(stats.StdDevRtt.Seconds() * 1e3)
 
-		pa.counters["packetSent"].WithLabelValues(pinger.IPAddr().String(), pa.Hostname, "false", "").Add(float64(stats.PacketsSent))
-		pa.counters["packetRecv"].WithLabelValues(pinger.IPAddr().String(), pa.Hostname, "false", "").Add(float64(stats.PacketsRecv))
+		pa.counters["packetSent"].WithLabelValues(pinger.IPAddr().String(), pa.Hostname).Add(float64(stats.PacketsSent))
+		pa.counters["packetRecv"].WithLabelValues(pinger.IPAddr().String(), pa.Hostname).Add(float64(stats.PacketsRecv))
 
 		if pa.debug {
 			log.Printf("\n--- %s ping statistics ---\n", stats.Addr)
